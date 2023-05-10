@@ -362,7 +362,7 @@ ifeq ($(CFG_TEE_BENCHMARK),y)
 LINUX_DEFCONFIG_BENCH ?= $(CURDIR)/kconfigs/tee_bench.conf
 endif
 
-LINUX_COMMON_FLAGS ?= LOCALVERSION= CROSS_COMPILE=$(CROSS_COMPILE_NS_KERNEL)
+LINUX_COMMON_FLAGS ?= LOCALVERSION= CROSS_COMPILE=$(CROSS_COMPILE_NS_KERNEL) -j 4
 
 .PHONY: linux-common
 linux-common: linux-defconfig
@@ -383,6 +383,11 @@ linux-defconfig-clean-common:
 .PHONY: linux-clean-common
 linux-clean-common: linux-defconfig-clean
 	$(MAKE) -C $(LINUX_PATH) $(LINUX_CLEAN_COMMON_FLAGS) clean
+
+.PHONY: linux-menuconfig
+linux-menuconfig:
+	$(MAKE) -C $(LINUX_PATH) $(LINUX_COMMON_FLAGS) menuconfig
+
 
 # LINUX_CLEANER_COMMON_FLAGS should be defined in specific makefiles (hikey.mk,...)
 .PHONY: linux-cleaner-common

@@ -304,15 +304,15 @@ LINUX_DEFCONFIG_COMMON_FILES := \
 
 linux-defconfig: $(LINUX_PATH)/.config
 
-LINUX_COMMON_FLAGS += ARCH=arm64 Image scripts_gdb
+LINUX_COMMON_FLAGS += ARCH=arm64
 
 linux: linux-common
 	mkdir -p $(BINARIES_PATH)
 	ln -sf $(LINUX_PATH)/arch/arm64/boot/Image $(BINARIES_PATH)
 
 linux-modules: linux
-	$(MAKE) -C $(LINUX_PATH) $(LINUX_COMMON_FLAGS) modules
-	$(MAKE) -C $(LINUX_PATH) $(LINUX_COMMON_FLAGS) INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH=$(MODULE_OUTPUT) modules_install
+	$(MAKE) -C $(LINUX_PATH) $(LINUX_COMMON_FLAGS) Image scripts_gdb modules
+	$(MAKE) -C $(LINUX_PATH) $(LINUX_COMMON_FLAGS) Image scripts_gdb INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH=$(MODULE_OUTPUT) modules_install
 
 linux-defconfig-clean: linux-defconfig-clean-common
 
@@ -358,6 +358,8 @@ OPTEE_OS_COMMON_FLAGS += CFG_TEE_CORE_NB_CORE=$(CFG_TEE_CORE_NB_CORE)
 endif
 
 OPTEE_OS_COMMON_FLAGS += $(OPTEE_OS_COMMON_FLAGS_SPMC_AT_EL_$(SPMC_AT_EL))
+OPTEE_OS_COMMON_FLAGS += CFG_SCMI_SCPFW=y
+OPTEE_OS_COMMON_FLAGS += CFG_SCP_FIRMWARE=$(ROOT)/SCP-firmware
 
 optee-os: optee-os-common
 
@@ -437,6 +439,11 @@ xen-create-image: linux buildroot | $(XEN_TMP)
 run: all
 	$(MAKE) run-only
 
+.PHONY: run-scmi
+# This target enforces updating root fs etc
+run-scmi: all
+	$(MAKE) run-only-scmi
+
 
 ifeq ($(XEN_BOOT),y)
 QEMU_CPU	?= cortex-a57
@@ -477,6 +484,7 @@ run-only:
 	$(call launch-terminal,54320,"Normal World")
 	$(call launch-terminal,54321,"Secure World")
 	$(call wait-for-ports,54320,54321)
+	dtc -I dts -O dtb -o $(ROOT)/build/qemu-v8-scmi.dtb $(ROOT)/build/qemu-v8-scmi.dts
 	cd $(BINARIES_PATH) && $(QEMU_BUILD)/aarch64-softmmu/qemu-system-aarch64 \
 		-nographic \
 		-serial tcp:127.0.0.1:54320 -serial tcp:127.0.0.1:54321 \
@@ -491,6 +499,10 @@ run-only:
 		-append 'console=ttyAMA0,38400 keep_bootcon root=/dev/vda2 $(QEMU_KERNEL_BOOTARGS)' \
 		$(QEMU_XEN) \
 		$(QEMU_EXTRA_ARGS)
+
+.PHONY: run-only-scmi
+run-only-scmi: QEMU_EXTRA_ARGS+= -dtb $(ROOT)/build/qemu-v8-scmi.dtb
+run-only-scmi: run-only
 
 ifneq ($(filter check check-rust,$(MAKECMDGOALS)),)
 CHECK_DEPS := all
