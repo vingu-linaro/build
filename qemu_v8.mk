@@ -73,6 +73,9 @@ KERNEL_IMAGE		?= $(LINUX_PATH)/arch/arm64/boot/Image
 KERNEL_IMAGEGZ		?= $(LINUX_PATH)/arch/arm64/boot/Image.gz
 KERNEL_UIMAGE		?= $(BINARIES_PATH)/uImage
 
+SCMI_DTS 		?= $(ROOT)/build/qemu_v8/qemu-v8-scmi.dts
+SCMI_DTB 		?= $(BINARIES_PATH)/qemu-v8-scmi.dtb
+
 # Load and entry addresses (u-boot only)
 # If you change this please also change in kconfigs/u-boot_qemu_v8.conf
 KERNEL_ENTRY		?= 0x42200000
@@ -116,6 +119,10 @@ TARGET_CLEAN		+= u-boot-clean
 
 ifeq ($(XEN_BOOT),y)
 TARGET_DEPS		+= xen-create-image
+endif
+
+ifeq ($(WITH_SCMI),y)
+TARGET_DEPS		+= $(SCMI_DTB)
 endif
 
 all: $(TARGET_DEPS)
@@ -357,6 +364,11 @@ CFG_TEE_CORE_NB_CORE ?= $(QEMU_SMP)
 OPTEE_OS_COMMON_FLAGS += CFG_TEE_CORE_NB_CORE=$(CFG_TEE_CORE_NB_CORE)
 endif
 
+ifeq ($(WITH_SCMI),y)
+OPTEE_OS_COMMON_FLAGS += CFG_SCMI_SCPFW=y
+OPTEE_OS_COMMON_FLAGS += CFG_SCP_FIRMWARE=$(ROOT)/SCP-firmware
+endif
+
 OPTEE_OS_COMMON_FLAGS += $(OPTEE_OS_COMMON_FLAGS_SPMC_AT_EL_$(SPMC_AT_EL))
 
 optee-os: optee-os-common
@@ -437,6 +449,8 @@ xen-create-image: linux buildroot | $(XEN_TMP)
 run: all
 	$(MAKE) run-only
 
+$(SCMI_DTB): $(BINARIES_PATH)
+	dtc -I dts -O dtb -o $(SCMI_DTB) $(SCMI_DTS)
 
 ifeq ($(XEN_BOOT),y)
 QEMU_CPU	?= cortex-a57
@@ -467,6 +481,10 @@ else ifeq ($(SPMC_AT_EL),2)
 QEMU_MTE	= on
 else
 QEMU_MTE	= off
+endif
+
+ifeq ($(WITH_SCMI),y)
+QEMU_EXTRA_ARGS+= -dtb $(SCMI_DTB)
 endif
 
 .PHONY: run-only
