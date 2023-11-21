@@ -52,6 +52,10 @@ else
 EDK2_BUILD		?= RELEASE
 endif
 EDK2_BIN		?= $(EDK2_PLATFORMS_PATH)/Build/ArmVExpress-FVP-AArch64/$(EDK2_BUILD)_$(EDK2_TOOLCHAIN)/FV/FVP_$(EDK2_ARCH)_EFI.fd
+
+SCMI_DTS 		?= $(ROOT)/build/fvp/fvp-base-revc-scmi.dts
+SCMI_DTB 		?= $(BINARIES_PATH)/fvp-base-revc-scmi.dtb
+
 FVP_USE_BASE_PLAT	?= n
 ifeq ($(FVP_USE_BASE_PLAT),y)
 FVP_PATH		?= $(ROOT)/Base_RevC_AEMvA_pkg/models/Linux64_GCC-9.3
@@ -89,7 +93,7 @@ endif
 ################################################################################
 # Targets
 ################################################################################
-all: arm-tf optee-os ftpm boot-img linux edk2
+all: arm-tf optee-os ftpm boot-img linux edk2 $(SCMI_DTB)
 clean: arm-tf-clean boot-img-clean buildroot-clean edk2-clean grub-clean \
 	ftpm-clean optee-os-clean
 
@@ -225,6 +229,11 @@ ifeq ($(MEASURED_BOOT),y)
 	OPTEE_OS_COMMON_FLAGS += CFG_DT=y CFG_CORE_TPM_EVENT_LOG=y
 endif
 
+ifeq ($(WITH_SCMI),y)
+OPTEE_OS_COMMON_FLAGS += CFG_SCMI_SCPFW=y
+OPTEE_OS_COMMON_FLAGS += CFG_SCP_FIRMWARE=$(ROOT)/SCP-firmware
+endif
+
 optee-os: optee-os-common
 
 optee-os-clean: ftpm-clean optee-os-clean-common
@@ -301,6 +310,9 @@ boot-img-clean:
 # This target enforces updating root fs etc
 run: all
 	$(MAKE) run-only
+
+$(SCMI_DTB): $(BINARIES_PATH)
+	dtc -I dts -O dtb -o $(SCMI_DTB) $(SCMI_DTS)
 
 ifeq ($(FVP_USE_BASE_PLAT),y)
 FVP_ARGS ?= \
