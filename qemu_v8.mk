@@ -73,6 +73,10 @@ KERNEL_IMAGE		?= $(LINUX_PATH)/arch/arm64/boot/Image
 KERNEL_IMAGEGZ		?= $(LINUX_PATH)/arch/arm64/boot/Image.gz
 KERNEL_UIMAGE		?= $(BINARIES_PATH)/uImage
 
+SCMI_DTSO 		?= $(ROOT)/build/qemu_v8/qemu-v8-scmi-overlay.dtso
+SCMI_DTBO 		?= $(BINARIES_PATH)/qemu-v8-scmi-overlay.dtbo
+SCMI_DTB 		?= $(BINARIES_PATH)/qemu-v8-scmi.dtb
+
 # Load and entry addresses (u-boot only)
 # If you change this please also change in kconfigs/u-boot_qemu_v8.conf
 KERNEL_ENTRY		?= 0x42200000
@@ -116,6 +120,10 @@ TARGET_CLEAN		+= u-boot-clean
 
 ifeq ($(XEN_BOOT),y)
 TARGET_DEPS		+= xen-create-image
+endif
+
+ifeq ($(WITH_SCMI),y)
+TARGET_DEPS		+= $(SCMI_DTB)
 endif
 
 all: $(TARGET_DEPS)
@@ -358,6 +366,11 @@ CFG_TEE_CORE_NB_CORE ?= $(QEMU_SMP)
 OPTEE_OS_COMMON_FLAGS += CFG_TEE_CORE_NB_CORE=$(CFG_TEE_CORE_NB_CORE)
 endif
 
+ifeq ($(WITH_SCMI),y)
+OPTEE_OS_COMMON_FLAGS += CFG_SCMI_SCPFW=y
+OPTEE_OS_COMMON_FLAGS += CFG_SCP_FIRMWARE=$(ROOT)/SCP-firmware
+endif
+
 OPTEE_OS_COMMON_FLAGS += $(OPTEE_OS_COMMON_FLAGS_SPMC_AT_EL_$(SPMC_AT_EL))
 
 optee-os: optee-os-common
@@ -466,6 +479,27 @@ xen-create-image: linux buildroot | $(XEN_TMP)
 run: all
 	$(MAKE) run-only
 
+ifeq ($(WITH_SCMI),y)
+$(SCMI_DTBO): $(SCMI_DTSO)
+	dtc -I dts -O dtb -o $(SCMI_DTBO) $(SCMI_DTSO)
+
+$(SCMI_DTB): $(SCMI_DTBO)
+	cd $(BINARIES_PATH) && $(QEMU_BUILD)/aarch64-softmmu/qemu-system-aarch64 \
+		-nographic \
+		-serial tcp:127.0.0.1:$(QEMU_NW_PORT) -serial tcp:127.0.0.1:$(QEMU_SW_PORT) \
+		-smp $(QEMU_SMP) \
+		-s -S -machine virt,acpi=off,secure=on,mte=$(QEMU_MTE),gic-version=$(QEMU_GIC_VERSION),virtualization=$(QEMU_VIRT),dumpdtb=qemu_v8.dtb \
+		-cpu $(QEMU_CPU) \
+		-d unimp -semihosting-config enable=on,target=native \
+		-m $(QEMU_MEM) \
+		-bios bl1.bin		\
+		-initrd rootfs.cpio.gz \
+		-kernel Image \
+		-append 'console=ttyAMA0,38400 keep_bootcon root=/dev/vda2 $(QEMU_KERNEL_BOOTARGS)' \
+		$(QEMU_XEN) \
+		$(QEMU_EXTRA_ARGS)
+	cd $(BINARIES_PATH) && fdtoverlay -i qemu_v8.dtb -o $(SCMI_DTB) $(SCMI_DTBO)
+endif
 
 ifeq ($(XEN_BOOT),y)
 QEMU_CPU	?= cortex-a57
@@ -498,6 +532,10 @@ else
 QEMU_MTE	= off
 endif
 
+ifeq ($(WITH_SCMI),y)
+QEMU_SCMI_ARGS 	= -dtb $(SCMI_DTB)
+endif
+
 .PHONY: run-only
 run-only:
 	ln -sf $(ROOT)/out-br/images/rootfs.cpio.gz $(BINARIES_PATH)/
@@ -519,7 +557,8 @@ run-only:
 		-kernel Image \
 		-append 'console=ttyAMA0,38400 keep_bootcon root=/dev/vda2 $(QEMU_KERNEL_BOOTARGS)' \
 		$(QEMU_XEN) \
-		$(QEMU_EXTRA_ARGS)
+		$(QEMU_EXTRA_ARGS) \
+		$(QEMU_SCMI_ARGS)
 
 ifneq ($(filter check check-rust,$(MAKECMDGOALS)),)
 CHECK_DEPS := all
